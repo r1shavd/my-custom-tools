@@ -1,0 +1,4 @@
+# Excluding the compiled binaries and test
+bin/
+tests/
+*.swp

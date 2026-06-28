@@ -7,6 +7,21 @@ Platform: All
 This src reads config files (generally in INI formats and displays them
 in a tabular format. This is a common script made to be implemented in 
 the various programs which i make.
+
+Current format for configuration:
+```
+[CurrentSection]
+hostname=<value>
+usern=<value>
+passw=<value>
+port=<value>
+[NewSection]
+hostname=<value>
+...
+...
+port=<value>
+```
+
 */
 
 #include <stdio.h>

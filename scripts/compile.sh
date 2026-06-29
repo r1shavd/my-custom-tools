@@ -233,6 +233,9 @@ then
     	printf "[\033[0;91m~\033[0m] No arguments given. Atleast put a default file at \033[0;93msrc/main.c\033[0m\n"
     	printf "\033[0;91mQUITING...\033[0m\n"
 		exit 1
+    else
+        printf "[\033[0;93m~\033[0m] Validating \033[0;97m%-30s\033[0m: " "src/${POSITIONAL_ARGS[$i]}"
+        printf "\033[0;92mValidated\033[0m\n"
     fi
 else
     # Loop through the traditional indexed array

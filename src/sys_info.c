@@ -15,7 +15,7 @@ typedef struct VendorMap {
 
     const char* key;
     const char* value;
-}
+};
 
 struct CpuStats {
     // To store CPU time states - native mode

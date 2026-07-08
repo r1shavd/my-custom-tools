@@ -223,7 +223,9 @@ if [[ -z "${OPTIONS[exclude]}" || "${OPTIONS[exclude]}" == "true" ]]; then
         OPTIONS[exclude]+="--exclude=${POSITIONAL_ARGS[$i]} "
     done
     printf "\033[0m\n"
-    echo ${OPTIONS[exclude]}
+else
+	# If no files are given to exclude
+	OPTIONS[exclude]=""
 fi
 
 # Prompting the user to continue
@@ -245,12 +247,31 @@ function main {
 
 	tarfile="/tmp/$( whoami )@$( hostname -I | awk '{ print $1 }' )_$( date +"%Y%m%d_%H%M%S" ).tar.xz"
 	eval "tar ${OPTIONS[verbose]} ${OPTIONS[exclude]} -cJf $tarfile ${OPTIONS[copy_loc]}"
-	printf "\033[0;97m[\033[0;92m*\033[0;97m]\033[0m Compressed to: \033[0;92m$tarfile\033[0m\n"
+	if [[ "$?" -eq 0 ]]
+	then
+		# If backup is created at the desired location
+
+		printf "\033[0;97m[\033[0;92m*\033[0;97m]\033[0m Compressed to: \033[0;92m$tarfile\033[0m\n"
+	else
+		# If backup  files creation fails
+		
+		printf "[\033[0;91m!\033[0m] Failed to create the backup zip\n"
+		exit 1
+	fi
 
 	# Copying to the remote location
 	printf "\033[0;97m[\033[0;93m~\033[0;97m]\033[0m Copying to remote location\n"
 	eval "scp $tarfile ${OPTIONS[remote]}:${OPTIONS[remote_loc]}"
-	printf "[ ------- \033[0;92mPROCESS FINISHED\033[0m] ------- ]\n"
+	if [[ "$?" -eq 0 ]];
+	then
+		# If copying the backup zip successful over SSH
+
+		printf "[ ------- \033[0;92mPROCESS FINISHED\033[0m] ------- ]\n"
+	else
+		# If copying the backup over SSH fails
+		
+		printf "[\033[0;91m!\033[0m] Copying backup file over SCP failed..\033[0;91mTerminating...\033[0m\n"
+	fi
 	rm $tarfile
 	exit 0
 }

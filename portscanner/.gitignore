@@ -1,0 +1,12 @@
+# Ignoring the binaries, object files, swap files
+bin/
+obj/
+*.o
+src/*.o
+tests/
+temp/
+src/*.log
+*.log
+*.swp
+src/*.swp
+public/

@@ -1,0 +1,184 @@
+" - - - * - - -
+"   VIMRC - customized
+" - - - * - - -
+
+" Basic configs
+set background=dark
+set nocompatible
+syntax on 
+set number
+set wildmenu
+filetype plugin indent on
+
+" Tab space related configs
+set expandtab
+set shiftwidth=4
+set tabstop=4
+set autoindent
+set so=7
+
+" Avoid garbled characters in Chinese language windows OS
+let $LANG='en'
+set langmenu=en
+source $VIMRUNTIME/delmenu.vim
+source $VIMRUNTIME/menu.vim
+
+" Autoreading files when updated externally
+set autoread
+au FocusGained,BufEnter * silent! checktime
+
+" Disabling the annoying features [ RECORDING, SWAP FILE CREATION, HISTORY ]
+nnoremap q <Nop>
+set noswapfile
+set history=50
+
+" Setting :W to save files using SUDO permissions
+command! W execute 'w !sudo tee % > /dev/null' <bar> edit!
+
+" Ignoring compiled files
+set wildignore=*.o,*~,*.pyc
+if has("win16") || has("win32")
+    set wildignore+=.git\*,.hg\*,.svn\*
+else
+    set wildignore+=*/.git/*,*/.hg/*,*/.svn/*,*/.DS_Store
+endif
+
+" Search related configs
+set smartcase
+set ignorecase
+
+" Disabling annoying sounds on error
+set noerrorbells
+set novisualbell
+set t_vb=
+set tm=500
+" Properly disable sound on errors on MacVim
+if has("gui_macvim")
+    autocmd GUIEnter * set vb t_vb=
+endif
+
+" Mappings for Shell and Python (#) - Commenting, syntax folding
+autocmd FileType sh,python nnoremap <C-c> I#<Esc>j
+autocmd FileType sh,python nnoremap <C-x> :s/^#//<CR>:noh<CR>j
+autocmd FileType python,sh setlocal foldmethod=indent
+
+" Mappings for C, C++, and Java (//) - Commenting syntax folding
+autocmd FileType c,cpp,java nnoremap <C-c> I//<Esc>j
+autocmd FileType c,cpp,java nnoremap <C-x> :s/^\/\///<CR>:noh<CR>j
+autocmd FileType c,cpp,java setlocal foldmethod=syntax
+
+" Ensure folds are completely open by default when loading a file
+autocmd BufReadPost * setlocal foldlevel=99
+
+" Detecting the operating system
+let s:is_windows = has("win32") || has("win64")
+
+" Setting up Netrw sidebar (Vexplore)
+" - - - * - - -
+let g:netrw_liststyle = 3     " Use tree-style view
+let g:netrw_banner = 0        " Hide the bloated top banner help text
+let g:netrw_browse_split = 4  " Open files in the main editing window
+let g:netrw_altv = 1          " Split vertically to the right
+let g:netrw_winsize = 15      " Set sidebar width to 15% of the screen
+
+function! ToggleNetrw()
+  " Smart function to toggle Netrw sidebar open and closed
+  
+  let i = bufnr("$")
+  while i >= 1
+    if getbufvar(i, '&filetype') == "netrw"
+      if bufwinnr(i) != -1
+        execute bufwinnr(i) . "wincmd w"
+        :q
+        return
+      endif
+    endif
+    let i -= 1
+  endwhile
+  :Vexplore
+endfunction
+
+" Map Ctrl+n to the new smart toggle function
+nnoremap <silent> <C-n> :call ToggleNetrw()<CR>
+
+" Hide status line only in Netrw buffers
+augroup NetrwStatusLine
+  autocmd!
+  " Disable status line in Netrw window
+  autocmd FileType netrw setlocal laststatus=0
+  " Restore status line when switching back to code files
+  autocmd BufLeave * if &filetype != 'netrw' | set laststatus=2 | endif
+augroup END
+" - - - * - - -
+
+" Cross-Platform Colorscheme & Path Rules (Sunbather Setup)
+" - - - * - - -
+if s:is_windows
+    " Windows Specific Settings
+    set termguicolors          " Required for sunbather theme on Windows
+
+    " Force Vim to use forward slashes (/) internally on Windows.
+    " This ensures Netrw / Vexplore paths don't break when moving between systems.
+    set shellslash
+
+    " Attempt to load sunbather, catch error if not installed yet
+    silent! colorscheme sunbather
+else
+    " Linux Specific Settings
+    " Most Linux terminals support 24-bit color natively, but if sunbather
+    " looks washed out on Linux, uncomment the next line:
+    " set termguicolors
+
+    silent! colorscheme sunbather
+endif
+" - - - * - - -
+
+" Status line configurations
+" - - - * - - -
+" Enabling status line and terminal colors
+set laststatus=2
+if !has('gui_running')
+  set t_Co=256
+endif
+
+" Defining custom colors for each mode
+" (cterm for basic terminals, gui for modern terminal color extensions/GUIs)
+hi ModeNormal  ctermbg=2   ctermfg=0 guibg=#A6E22E guifg=#000000
+hi ModeInsert  ctermbg=4   ctermfg=0 guibg=#66D9EF guifg=#000000
+hi ModeVisual  ctermbg=5   ctermfg=0 guibg=#AE81FF guifg=#000000
+hi ModeReplace ctermbg=1   ctermfg=0 guibg=#F92672 guifg=#000000
+
+" Building the status line dynamically based on the current mode
+function! RedrawStatusLine()
+  let l:mode = mode()
+  let l:status = ''
+
+  " Append the colored mode segment
+  if l:mode ==# 'n'
+    let l:status .= '%#ModeNormal# NORMAL '
+  elseif l:mode ==# 'i'
+    let l:status .= '%#ModeInsert# INSERT '
+  elseif l:mode ==# 'v' || l:mode ==# 'V' || l:mode ==# "\<C-v>"
+    let l:status .= '%#ModeVisual# VISUAL '
+  elseif l:mode ==# 'R'
+    let l:status .= '%#ModeReplace# REPLACE '
+  else
+    let l:status .= '%#ModeNormal# NORMAL '
+  endif
+
+  " Reset color to default status bar highlighting and build the rest
+  let l:status .= '%#StatusLine#'
+  let l:status .= ' %f '             " File path
+  let l:status .= '%m'               " Modified [+] flag
+  let l:status .= '%='               " Push right side items
+  let l:status .= '%y '              " File type
+  let l:status .= 'Line:%l/%L '      " Line count
+  let l:status .= 'Col:%c '          " Column
+  let l:status .= '%P'               " File percentage
+
+  return l:status
+endfunction
+
+" Forcing vim to evaluate the entire function dynamically
+set statusline=%!RedrawStatusLine()
+" - - - * - - -

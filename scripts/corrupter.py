@@ -1,3 +1,10 @@
+"""
+Author: Rishav Das
+Created on: May, 2026
+
+NOT-MAINTAINED
+"""
+
 import os
 from sys import argv as argument
 

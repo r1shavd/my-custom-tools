@@ -10,3 +10,4 @@ src/*.log
 *.swp
 src/*.swp
 public/
+TASKLIST.md

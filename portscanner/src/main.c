@@ -47,7 +47,7 @@ int main(int argc, const char** argv) {
     }
     // - - - * - - -
 
-    int port;
+    int port = 0;
     if (strcmp(task, "--port") == 0) {
         // If the user requested to scan 1 particular port
 
@@ -57,16 +57,28 @@ int main(int argc, const char** argv) {
             printf("[!] Please mention a port.\nUse: portscan --port <port>\n");
             return EXIT_FAILURE;
         }
-        port = atoi(argv[3]);
+        port = strtol(argv[3], NULL, 10);
         printf("[~] Scanning for %s at port %d\n", target, port);
         scanPorts(target, port, SHOW);
         return 0;
     } else if (strcmp(task, "--ports") == 0) {
         // If the user requested to scan multiple ports
 
+		// Checking if user mentioned priority ports
+		// i.e., ./portscanner 127.0.0.1 --ports --priority
+		if (strcmp(argv[3], "--priority") == 0) {
+			int priority_ports[] = { 20, 21, 22, 23, 25, 53, 80, 81, 110, 123, 143, 443, 445, 587, 993, 995, 1433, 2222, 3000, 3001, 3306, 3389, 3390, 5000, 5432, 8000, 8080, 8443, 8888, 9000, 27017, 33389 };
+			printf("[~] Scanning %s for priority ports\n", target);
+			for (size_t i = 0; i < (sizeof(priority_ports) / sizeof(priority_ports[0])); i++) {
+				scanPorts(target, priority_ports[i], SHOW);
+			}
+			return 0;
+		 }
+
+		// Continuing with the user given arguments
         printf("[~] Scanning for %s at given ports\n", target);
         for (int i = 3; i < argc; i++) {
-            port = atoi(argv[i]);
+            port = strtol(argv[i], NULL, 0);
             if (!port) {
                 // If invalid port format is given
 
@@ -80,21 +92,59 @@ int main(int argc, const char** argv) {
     } else if (strcmp(task, "--port-range") == 0) {
         // If the user requested for a port range
         
-        port = strtol(argv[3], NULL, 10);
-        int port_ = strtol(argv[argc-1], NULL, 10);
-        if (!port || !port_) {
-            // If the port ranges are invalid
+        int port_ = 0;
+        if (strcmp(argv[3], "all") == 0) {
+            // If the user specified all the existing ports
+            // we set 1 to 65535
 
-            printf("[!] Invalid port range given %s - %s\n", argv[3], argv[argc-1]);
-            return EXIT_FAILURE;
+            port = 1;
+            port_ = 65535;
+        } else {
+            // If the port range is a speicified numbers. For example: --port-range 20 1000
+        
+            port = strtol(argv[3], NULL, 10);
+            port_ = strtol(argv[argc-1], NULL, 10);
+            if (!port) {
+                // If the port ranges are invalid (for lower counter of the range)
+
+                printf("[!] Invalid port given %s\n", argv[3]);
+                return EXIT_FAILURE;
+            }
+			if (!port_) {
+				// If the last argument fails to be the port range end
+				// Then, we try for nearest argument to port range head
+
+				port_ = strtol(argv[4], NULL, 10);
+				if (!port_) {
+					printf("[!] Invalid port given %s\n", argv[4]);
+					return EXIT_FAILURE;
+				}
+			}
+
+            // Swapping the ports in case range ends are larger to small
+            // i.e., [ a, b ] -> [ 100, 20 ]
+            if (port > port_) {
+                port = port ^ port_;
+                port_ = port ^ port_;
+                port = port ^ port_;
+            }
         }
-
+       
         // Starting the scan as in multithreading mode
         Scandetails scan_data;
         scan_data.ip = target;
         scan_data.current_port = port;
         scan_data.last_port = port_;
-        scan_data.show_status = HIDE;
+
+		// Checking if --detailed argument mentioned
+		// ./portscanner 127.0.0.1 --port-range 10 200 --detailed
+		// or,
+		// ./portscanner 127.0.0.1 --port-range --detailed
+		// - - - * - - -
+        if ((argv[4] != NULL && strcmp(argv[4], "--detailed") == 0) || (argv[5] != NULL && strcmp(argv[5], "--detailed") == 0))    scan_data.show_status = SHOW;
+		scan_data.show_status = HIDE;	// If --detailed not mentioned
+		// - - - * - - -
+		
         scan_port_range(&scan_data);
         return 0;
     }

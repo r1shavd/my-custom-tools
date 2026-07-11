@@ -37,24 +37,39 @@ The scanner evaluates the target port behavior over a strict **1-second timeout*
 
 ## Usage 
 
+### Build
+* Built for CLI usage only.
+* Currently tested on Linux/Unix platforms only
+
+Run the Makefile to build the binary stored at bin/portscanner
+```
+make
+```
+
 ### Basic Syntax
 ```bash
-./portscan <ip> <command> [arguments]
+./portscanner <ip> <command> [arguments]
 ```
 
 ### Supported Commands
 *   `--port <number>`: Scans a single, target port with a full verbose output report.
 *   `--port-range <start> <end>`: Scans a wide selection of ports concurrently using thread workers.
+*   `--port-range all`: Scans ports from all ranges 1 to 65535
 *   `--ports`: Used for comma-separated or specific custom port configurations.
+*   `--ports --priority`: Used to search all the widely used ports (like, 22 SSH, 80 HTTP, 25 SMTP).
+
+Use `--detailed` flag in case of `--port-range` to get the ports which may get filtered by the firewall and also understand
+if the port is closed. This may fill up the tty console a lot of waste data. Thus, it is disabled by default. But, enabled 
+by default for `--port` and `--ports` option as they are meant for scanning a few ports at a time.
 
 ### Code Examples
 
 **Scan a single port (Normal mode):**
 ```bash
-./portscan 192.168.1.1 --port 80
+./portscanner 192.168.1.1 --port 80
 ```
 
 **Scan a custom range (CurrentHigh-Speed Mode):**
 ```bash
-./portscan 192.168.1.1 --port-range 1 1024
+./portscanner 192.168.1.1 --port-range 1 1024
 ```

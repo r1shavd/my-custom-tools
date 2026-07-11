@@ -5,11 +5,16 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <string.h>
 #include <sys/select.h>    // Defines fd_set, FD_ZERO, FD_SET, and select
 #include <sys/time.h>    // Defines struct timeval
 #include <pthread.h>    // Defines the multithreading pthread creation
 
 #include "portscan.h"
+
+// The priority port range (most commonly used ones by popular services)
+int priority_ports[] = { 20, 21, 22, 23, 25, 53, 80, 81, 110, 123, 143, 443, 445, 587, 993, 995, 1433, 2222, 3000, 3001, 3306, 3389, 3390, 5000, 5432, 8000, 8080, 8443, 8888, 9000, 27017, 33389 };
+uint8_t scanned_ports[32768];
 
 int isIPV4(const char* ip) {
     /*
@@ -40,7 +45,9 @@ int isIPV4(const char* ip) {
 void* worker_thread(void* arguments) {
     /*
      This function helps running the multithreaded port scan.
-     Avoiding any resources conflicts.
+     Avoiding any resources conflicts which may occur due to
+     multiple small broken down processes running in form of
+     threads.
     */
 
     Scandetails* scan_data = (Scandetails*) arguments;
@@ -57,6 +64,9 @@ void* worker_thread(void* arguments) {
 
         // Breaking loop when the port range is done scanning
         if (port == -1)    break;
+
+        // If current port was already visited
+        if (CHECK_PORT(port))    continue;
 
         // Executing the scan opertaion on the current port
         scanPorts(scan_data->ip, port, scan_data->show_status);
@@ -80,8 +90,19 @@ int scan_port_range(void* arguments) {
     Scandetails* scan_data = (Scandetails*) arguments;
     pthread_mutex_init(&scan_data->counter_mutex, NULL);
 
-    // Creating threads and starting the multithreading to further fasten the scan process on the range
+    // Starting the scan process
     printf ("[~] Scanning %s for the range %d to %d\n", scan_data->ip, scan_data->current_port, scan_data->last_port);
+    // - - - * - - -
+    // First doing the priority_ports
+    memset(scanned_ports, 0, sizeof(scanned_ports));
+    for (size_t i = 0; i < (sizeof(priority_ports) /  sizeof(priority_ports[0])); i++) {
+        if (priority_ports[i] < scan_data->current_port || priority_ports[i] > scan_data->last_port)    continue;    // Skipping the PORT if not in the range specified by user
+
+        scanPorts(scan_data->ip, priority_ports[i], scan_data->show_status);
+        SET_PORT(priority_ports[i]);
+    }
+
+    // Creating threads and starting the multithreading to further fasten the scan process on the range
     long num_cpu_cores = sysconf(_SC_NPROCESSORS_ONLN);
     int num_threads = (num_cpu_cores > 0) ? (int) num_cpu_cores * 4 : 32;
     pthread_t* threads = malloc(num_threads * sizeof(pthread_t));
@@ -99,11 +120,11 @@ int scan_port_range(void* arguments) {
 
     free(threads);
     pthread_mutex_destroy(&scan_data->counter_mutex);
+    // - - - * - - -
 
     printf("[*] Scan completed\n");
     return 0;
 }
-
 
 void scanPorts(const char* ip, int port, unsigned char show_status) {
     /*
@@ -136,6 +157,7 @@ void scanPorts(const char* ip, int port, unsigned char show_status) {
         return;
     }
 
+    // Setting sockets to NON-BLOCKING mode (helps to speed up shit)
     int flags = fcntl(socket_connection, F_GETFL, 0);
     fcntl(socket_connection, F_SETFL, flags | O_NONBLOCK);
 

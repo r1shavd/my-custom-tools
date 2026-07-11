@@ -1,8 +1,14 @@
 #ifndef PORTSCAN_H
 #define PORTSCAN_H
 
+#include <stdint.h>    // For certain uint8_t bits operation in scanned_ports
+
 #define SHOW 1
 #define HIDE 0
+
+// Definitions for avoiding re-scanning any scanned priority ports (for port-ranges)
+#define SET_PORT(PORT)    (scanned_ports[(PORT) / 8] |= (1 << ((PORT) % 8)))
+#define CHECK_PORT(PORT)    (scanned_ports[(PORT) / 8] & (1 << ((PORT) % 8)))
 
 // Custom data structures
 // - - - * - - -

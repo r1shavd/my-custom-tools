@@ -1,0 +1,14 @@
+# Ignoring the binaries and object files
+bin/
+build/
+src/*.o
+*.o
+
+# Ignoring the cache folders
+__pycache__/
+*.swp
+src/*.swp
+
+# Ignoring the tests folders
+tests/
+

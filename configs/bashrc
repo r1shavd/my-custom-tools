@@ -34,7 +34,7 @@ fi
 unset rc
 
 # User specific aliases and functions
-export PS1="\033[0;92m\u\033[0m:\w\$ "
+export PS1="\[\033[01;32m\]\u\[\033[01;00m\]:\[\033[01;34m\]\w\[\033[01;00m\]\$ "
 
 # User defined alias
 alias ls="ll -h"

@@ -56,7 +56,7 @@ make
 *   `--port-range <start> <end>`: Scans a wide selection of ports concurrently using thread workers.
 *   `--port-range all`: Scans ports from all ranges 1 to 65535
 *   `--ports`: Used for comma-separated or specific custom port configurations.
-*   `--ports --priority`: Used to search all the widely used ports (like, 22 SSH, 80 HTTP, 25 SMTP).
+*   `--ports-priority`: Used to search all the widely used ports (like, 22 SSH, 80 HTTP, 25 SMTP).
 
 Use `--detailed` flag in case of `--port-range` to get the ports which may get filtered by the firewall and also understand
 if the port is closed. This may fill up the tty console a lot of waste data. Thus, it is disabled by default. But, enabled 

@@ -1,61 +1,99 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-
 #include "colors.h"
 #include "encrypt.h"
 #include "decrypt.h"
 
-int main(int argc, char *argv[])
-{
-    char filepath[256];
-    char password[256];
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <getopt.h>
 
-    if (argc > 1) {
-        strncpy(filepath, argv[1], sizeof(filepath) - 1);
-        filepath[sizeof(filepath) - 1] = '\0';
-    } else {
-        printf("Enter the file path: ");
-        if (!fgets(filepath, sizeof(filepath), stdin)) return 1;
-        filepath[strcspn(filepath, "\n")] = 0;
+static enum TaskType
+{
+    // To check if user wants encryption / decryption
+
+    NO_TASK = 0,
+    ENCRYPT_TASK,
+    DECRYPT_TASK
+};
+
+void display_help()
+{
+    printf("Usage: ./encrypter --file <path> [--encrypt | --decrypt] [--help] --password <password>\n\n");
+    printf("Options:\n");
+    printf("  --file <path>         Specify the file to process (Required)\n");
+    printf("  --password <passw>    Specify the passw for encryption (Required)\n");
+    printf("  --encrypt             Perform encryption task\n");
+    printf("  --decrypt             Perform decryption task\n");
+    printf("  --help                Display this help menu\n");
+}
+
+int main(int argc, char** argv)
+{
+    int opt;
+    char* filename = NULL;
+    char password[64];
+    memset(password, '\0', sizeof(password));
+    enum TaskType task = NO_TASK;
+
+    struct option long_options[] = {
+        {"file",    required_argument, 0, 'f'},
+        {"password", required_argument, 0, 'p'},
+        {"encrypt", no_argument,       0, 'e'},
+        {"decrypt", no_argument,       0, 'd'},
+        {"help",    no_argument,       0, 'h'},
+        {0, 0, 0, 0}
+    };
+
+    while ((opt = getopt_long(argc, argv, "", long_options, NULL)) != -1) {
+        switch (opt) {
+            case 'f':
+                filename = optarg;
+                break;
+            case 'p':
+                snprintf(password, sizeof(password), "%s", optarg);
+                break;
+            case 'e':
+                task = ENCRYPT_TASK;
+                break;
+            case 'd':
+                task = DECRYPT_TASK;
+                break;
+            case 'h':
+                display_help();
+                return EXIT_SUCCESS;
+            default:
+                display_help();
+                return EXIT_FAILURE;
+        }
     }
 
-	if (argc > 2) {
-		if (strcmp(argv[2], "--encrypt") == 0 || strcmp(argv[2], "-e") == 0) {
-			// If the user choosed ENCRYPTION
+    // Validation
+    if (filename == NULL) {
+        fprintf(stderr, "[!] The --file argument is required\n");
+        return EXIT_FAILURE;
+    }
 
-			printf("Enter password for encryption: ");
-   			if (!fgets(password, sizeof(password), stdin)) return 1;
-    		password[strcspn(password, "\n")] = 0;
-			if (strlen(password) < 2) {
-				printf("[%s!%s] Please enter a valid password\n", RED, DEFAULT);
-				return EXIT_FAILURE;
-			}
-    		encrypt_file(filepath, password);
+    if (task == NO_TASK) {
+        fprintf(stderr, "[!] You must specify either --encrypt or --decrypt\n");
+        return EXIT_FAILURE;
+    }
 
-    		// Cleaning up mem safely
-    		memset(password, 0, sizeof(password));
+    if (password[0] == '\0') {
+        fprintf(stderr, "[!] Please specify a password using flag --password\n");
+        return EXIT_FAILURE;
+    }
 
-		} else if (strcmp(argv[2], "--decrypt") == 0 || strcmp(argv[2], "-d") == 0) {
-			// If the user choosed DECRYPTION
+    if ((sizeof(password) / sizeof(password[0])) < 2) {
+        fprintf(stderr, "[!] Enter a valid password\n");
+        return EXIT_FAILURE;
+    }
 
-			printf("Enter password for decryption: ");
-			if (!fgets(password, sizeof(password), stdin)) return 1;
-    		password[strcspn(password, "\n")] = 0;
-			if (strlen(password) < 2) {
-				printf("[%s!%s] Please enter a valid password\n", RED, DEFAULT);
-				return EXIT_FAILURE;
-			}
-    		decrypt_file(filepath, password);
+    // Encrypting or decrypting based on task
+    if (task == ENCRYPT_TASK) {
+    	encrypt_file(filename, password);
+    } else {
+        decrypt_file(filename, password);
+    }
 
-   			 // Cleaning up mem safely
-    		memset(password, 0, sizeof(password));		
-		} else {
-			// Error argument
-
-			printf("[%s!%s] No such argument '%s'. Use --encrypt --decrypt or --help\n", RED, DEFAULT, argv[2]);
-			return EXIT_FAILURE;
-		}
-	}    
     return 0;
 }

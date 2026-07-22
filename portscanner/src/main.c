@@ -1,154 +1,210 @@
+#include "portscan.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <getopt.h>
 
-#include "portscan.h"
+static enum ScannerMode
+{
+    // Scan modes
 
-int main(int argc, const char** argv) {
-    // The main driver function
+    DEFAULT_MODE = 0,
+    SINGLE_SCAN,
+    MULTI_SCAN,
+    PRIORITY_SCAN,
+    RANGE_SCAN,
+    ALL_SCAN,
+};
 
-    /*
-    NOTE:
-      This version currently has configurations:
-       * single port scan and multi port scan runs on a single thread, thus maximizing power
-         for the single scan. Also, show_status = SHOW as we need complete details whether 
-         the port is OPEN / CLOSED / FILTERED
 
-       * port range scans are executed in multiple threads to squeeze out the max speed required.
-         show_status = HIDE default as to avoid clutter of results and filter out only OPEN connections.
-    */
+void display_usage()
+{
+    printf("Usage:\n");
+    printf("  Way 1: ./portscanner --host <host> --ports <port1> <port2> ...\n");
+    printf("  Way 2: ./portscanner --host <host> --port <port>\n");
+    printf("  Way 3: ./portscanner --host <host> --port-range <start> <end>\n");
+    printf("  Way 4: ./portscanner --host <host> --port-range all\n");
 
-    // Parsing the arguments
-    // - - - * - - -
-    if (argc < 4) {
-        // If the arguments aren't enough ./portscan <ip> <command> <ip1> <ip2> ....
-        // We display usage text / help
-        
-       printf("USAGE:\n\nportscan <ip> <command> <ip1> <ip2> .... <ipN>\n\nLike,\nportscan 192.168.1.2 --port-range 80 2000\n");
-       return 0;
-    }
+    printf("  Way 5: ./portscanner --host <host> --ports-priority\n");
+}
 
-    // Getting and validating the user input IPV4 host addr
-    const char* target = argv[1];
-    if (isIPV4(target) == 1) {
-        // If the user given host address is not valid
+int main(int argc, char *argv[])
+{
+    Scandetails scan_data = {0};
+    scan_data.ip = NULL;
+    scan_data.show_status = DETAILS_HIDE;
 
-        printf("[!] Invalid IP address provided\n");
-        return EXIT_FAILURE;
-    }
+    int* ports = NULL;
+    char* endptr;
+    
+    int port_count = 0;
+    enum ScannerMode mode = DEFAULT_MODE;
 
-    // Validating the command
-    const char* task = argv[2];
-    if (!task) {
-        // If the user didn't mention the command / task
+    static struct option long_options[] = {
+        {"help",       no_argument,       0, 'h'},
+        {"host",       required_argument, 0, 'i'},
+        {"port",       required_argument, 0, 'p'},
+        {"ports",      no_argument,       0, 'm'},
+        {"ports-priority", no_argument,   0, 'P'},
+        {"port-range", required_argument, 0, 'r'},
+        {"detailed",   no_argument,       0, 'd'},
+        {0, 0, 0, 0}
+    };
 
-        printf("[!] Task not mentioned availabe: --port-range, --ports, --port\n");
-        return EXIT_FAILURE;
-    }
-    // - - - * - - -
+    int opt;
+    int option_index = 0;
 
-    int port = 0;
-    if (strcmp(task, "--port") == 0) {
-        // If the user requested to scan 1 particular port
+    while ((opt = getopt_long(argc, argv, "", long_options, &option_index)) != -1) {
+        switch (opt) {
+            case 'i':
+                scan_data.ip = optarg;
 
-        if (argv[3] == NULL) {
-            // If the third argument i.e., the port to be scanned is not provided, then raise an error
+                if (isIPV4(scan_data.ip) == 0) {
+                    fprintf(stderr, "[!] Invalid ip address mentioned, use ipv4\n");
+                    return EXIT_FAILURE;
+                }
 
-            printf("[!] Please mention a port.\nUse: portscan --port <port>\n");
-            return EXIT_FAILURE;
+                break;
+                
+            case 'p':
+                mode = SINGLE_SCAN;
+                scan_data.current_port = strtol(optarg, &endptr, 10);
+                
+                if (endptr == optarg || *endptr != '\0') {
+                    fprintf(stderr, "[!] Invalid port, use --help for help\n");
+                    return EXIT_FAILURE;
+                }
+
+                port_count = 1;
+                break;
+                
+            case 'm':
+                mode = MULTI_SCAN;
+                
+                // We consume arguments following '--ports' until another flag or end of argv
+                while (optind < argc && argv[optind][0] != '-') {
+
+                    ports = realloc(ports, (port_count + 1) * sizeof(int));
+                    ports[port_count] = strtol(argv[optind], &endptr, 10);
+                    
+                    if (endptr == argv[optind] || *endptr != '\0') {
+                        fprintf(stderr, "[!] Invalid port, use --help for help\n");
+                        free(ports);
+                        ports = NULL;
+                        return EXIT_FAILURE;
+                    }
+
+                    port_count++;
+                    optind++;
+                }
+
+                break;
+               
+            case 'P':
+                mode = PRIORITY_SCAN;
+                
+                int priority_list[] = {
+                    20, 21, 22, 23, 25, 53, 80, 81,
+                    110, 123, 143, 443, 445, 587,
+                    993, 995, 1433, 2222, 3000, 3001,
+                    3306, 3389, 3390, 5000, 5432, 8000,
+                    8080, 8443, 8888, 9000, 27017, 33389
+                };
+                
+                port_count = sizeof(priority_list) / sizeof(priority_list[0]);
+                
+                ports = malloc(sizeof(priority_list));
+                if (ports == NULL) {
+                    fprintf(stderr, "[!] Memory allocation failed\n");
+                    return EXIT_FAILURE;
+                }
+                memcpy(ports, priority_list, sizeof(priority_list));
+                break;
+
+            case 'r':
+                if (strcmp(optarg, "all") == 0) {
+                    mode = ALL_SCAN;
+                    
+                    scan_data.current_port = 1;
+                    scan_data.last_port = 65535;
+                } else {
+                    mode = RANGE_SCAN;
+
+                    scan_data.current_port = strtol(optarg, &endptr, 10);
+                    if (endptr == optarg || *endptr != '\0') {
+                        fprintf(stderr, "[!] Invalid port, use --help for help\n");
+                        return EXIT_FAILURE;
+                    }
+
+                    // The next argument must be the end of the range
+                    if (optind < argc && argv[optind][0] != '-') {
+                        scan_data.last_port = strtol(argv[optind], &endptr, 10);
+                        if (endptr == argv[optind] || *endptr != '\0') {
+                            fprintf(stderr, "[!] Invalid port, use --help for help\n");
+                            return EXIT_FAILURE;
+                        }
+
+                        optind++;
+                    } else {
+                        fprintf(stderr, "Error: --port-range requires a ending port or 'all'.\n");
+                        display_usage();
+                        return EXIT_FAILURE;
+                    }
+                }
+                break;
+            case 'd':
+                scan_data.show_status = DETAILS_SHOW;
+                break;
+            case 'h':
+            default:
+                display_usage();
+                return EXIT_FAILURE;
         }
-        port = strtol(argv[3], NULL, 10);
-        printf("[~] Scanning for %s at port %d\n", target, port);
-        scanPorts(target, port, SHOW);
-        return 0;
-    } else if (strcmp(task, "--ports") == 0) {
-        // If the user requested to scan multiple ports
+    }
 
-		// Checking if user mentioned priority ports
-		// i.e., ./portscanner 127.0.0.1 --ports --priority
-		if (strcmp(argv[3], "--priority") == 0) {
-			int priority_ports[] = { 20, 21, 22, 23, 25, 53, 80, 81, 110, 123, 143, 443, 445, 587, 993, 995, 1433, 2222, 3000, 3001, 3306, 3389, 3390, 5000, 5432, 8000, 8080, 8443, 8888, 9000, 27017, 33389 };
-			printf("[~] Scanning %s for priority ports\n", target);
-			for (size_t i = 0; i < (sizeof(priority_ports) / sizeof(priority_ports[0])); i++) {
-				scanPorts(target, priority_ports[i], SHOW);
-			}
-			return 0;
-		 }
+    if (!scan_data.ip || mode == DEFAULT_MODE) {
+        fprintf(stderr, "Error: Missing required arguments.\n");
+        display_usage();
+        free(ports);
+        ports = NULL;
+        return EXIT_FAILURE;
+    }
 
-		// Continuing with the user given arguments
-        printf("[~] Scanning for %s at given ports\n", target);
-        for (int i = 3; i < argc; i++) {
-            port = strtol(argv[i], NULL, 0);
-            if (!port) {
-                // If invalid port format is given
-
-                printf("[!] Invalid port: %s\n", argv[i]);
-                continue;
+    printf("[~] Scanning target - %s\n", scan_data.ip);
+    switch (mode) {
+        case SINGLE_SCAN:
+            scan_data.show_status = DETAILS_SHOW;
+            scanPorts(scan_data.ip, scan_data.current_port, scan_data.show_status);
+            break;
+        
+        case MULTI_SCAN:
+        case PRIORITY_SCAN:
+            scan_data.show_status = DETAILS_SHOW;
+            
+            for (int i = 0; i < port_count; i++) {
+                scanPorts(scan_data.ip, ports[i], scan_data.show_status);
             }
             
-            scanPorts(target, port, SHOW);
-        }
-        return 0;
-    } else if (strcmp(task, "--port-range") == 0) {
-        // If the user requested for a port range
+            printf("\n");
+            break;
         
-        int port_ = 0;
-        if (strcmp(argv[3], "all") == 0) {
-            // If the user specified all the existing ports
-            // we set 1 to 65535
-
-            port = 1;
-            port_ = 65535;
-        } else {
-            // If the port range is a speicified numbers. For example: --port-range 20 1000
+        case RANGE_SCAN:
+        case ALL_SCAN:
+            scan_port_range(&scan_data);
+            break;
         
-            port = strtol(argv[3], NULL, 10);
-            port_ = strtol(argv[argc-1], NULL, 10);
-            if (!port) {
-                // If the port ranges are invalid (for lower counter of the range)
-
-                printf("[!] Invalid port given %s\n", argv[3]);
-                return EXIT_FAILURE;
-            }
-			if (!port_) {
-				// If the last argument fails to be the port range end
-				// Then, we try for nearest argument to port range head
-
-				port_ = strtol(argv[4], NULL, 10);
-				if (!port_) {
-					printf("[!] Invalid port given %s\n", argv[4]);
-					return EXIT_FAILURE;
-				}
-			}
-
-            // Swapping the ports in case range ends are larger to small
-            // i.e., [ a, b ] -> [ 100, 20 ]
-            if (port > port_) {
-                port = port ^ port_;
-                port_ = port ^ port_;
-                port = port ^ port_;
-            }
-        }
-       
-        // Starting the scan as in multithreading mode
-        Scandetails scan_data;
-        scan_data.ip = target;
-        scan_data.current_port = port;
-        scan_data.last_port = port_;
-
-		// Checking if --detailed argument mentioned
-		// ./portscanner 127.0.0.1 --port-range 10 200 --detailed
-		// or,
-		// ./portscanner 127.0.0.1 --port-range --detailed
-		// - - - * - - -
-        if ((argv[4] != NULL && strcmp(argv[4], "--detailed") == 0) || (argv[5] != NULL && strcmp(argv[5], "--detailed") == 0))    scan_data.show_status = SHOW;
-		scan_data.show_status = HIDE;	// If --detailed not mentioned
-		// - - - * - - -
-		
-        scan_port_range(&scan_data);
-        return 0;
+        case DEFAULT_MODE:
+        default:
+            display_usage();
+            free(ports);
+            break;
     }
 
-    printf("Scan complete.\n");
-    return 0;
+    // Clean up
+    if (ports != NULL) {
+        free(ports);
+        ports = NULL;
+    }
+    return EXIT_SUCCESS;
 }

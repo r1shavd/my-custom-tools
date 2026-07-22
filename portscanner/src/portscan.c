@@ -1,3 +1,5 @@
+#include "portscan.h"
+
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,46 +10,53 @@
 #include <string.h>
 #include <sys/select.h>    // Defines fd_set, FD_ZERO, FD_SET, and select
 #include <sys/time.h>    // Defines struct timeval
-#include <pthread.h>    // Defines the multithreading pthread creation
 
-#include "portscan.h"
-
-// The priority port range (most commonly used ones by popular services)
-int priority_ports[] = { 20, 21, 22, 23, 25, 53, 80, 81, 110, 123, 143, 443, 445, 587, 993, 995, 1433, 2222, 3000, 3001, 3306, 3389, 3390, 5000, 5432, 8000, 8080, 8443, 8888, 9000, 27017, 33389 };
+static int priority_ports[] = {
+    20, 21, 22, 23, 25, 53, 80, 81,
+    110, 123, 143, 443, 445, 587,
+    993, 995, 1433, 2222, 3000, 3001,
+    3306, 3389, 3390, 5000, 5432, 8000,
+    8080, 8443, 8888, 9000, 27017, 33389
+};
 uint8_t scanned_ports[32768];
 
-int isIPV4(const char* ip) {
+int isIPV4(const char* ip)
+{
     /*
-     This function validates whether an given host ip is an valid IPV4
-     ADDRESS or not.
-     Returns 0 if SHOW
-             1 if NOT VALID
+     * @brief   Checks whether host address is proper ipv4 or not
+     *
+     * @param[const char*] ip       target ip address
+     *
+     * @return                      0 for invalid addr
+     *                              1 for valid addr
     */
 
     int octet1, octet2, octet3, octet4;
     char extra;
 
-    // Checking if string matches the pattern
+    // sscanf should return EXACTLY 4. 
+    // If it returns 5, it means there are extra trailing characters.
     if (sscanf(ip, "%d.%d.%d.%d%c", &octet1, &octet2, &octet3, &octet4, &extra) != 4) {
-        return 0; // Invalid format or extra characters found
+        return 0; // Invalid format
     }
 
-    // Validating each octet in 0-255 range
-    if ((octet1 < 0 || octet1 > 255) || (octet2 < 0 || octet2 > 255) || (octet3 < 0 || octet3 > 255) || (octet4 < 0 || octet4 > 255)) {
-        // If any of the octets fails validation
-
-        return 1;
+    if ((octet1 < 0 || octet1 > 255) || 
+        (octet2 < 0 || octet2 > 255) || 
+        (octet3 < 0 || octet3 > 255) || 
+        (octet4 < 0 || octet4 > 255)) {
+        return 0; // Invalid range
     }
 
-    return 0; // Valid IPV4 address returns no error
+    return 1; // Valid IP
 }
 
-void* worker_thread(void* arguments) {
+void* worker_thread(void* arguments)
+{
     /*
-     This function helps running the multithreaded port scan.
-     Avoiding any resources conflicts which may occur due to
-     multiple small broken down processes running in form of
-     threads.
+     * @brief   Mutlithread worker - resolves resource conflicts
+     *
+     * @params[void] Scannerdetails
+     *
     */
 
     Scandetails* scan_data = (Scandetails*) arguments;
@@ -74,25 +83,27 @@ void* worker_thread(void* arguments) {
     return NULL;
 }
 
-int scan_port_range(void* arguments) {
+int scan_port_range(void* arguments)
+{
     /*
-     This function executes the port range based scanning for the mentioned target host. This function serves the purpose of creating multiple threads and focussing on max utilization of CPU cores count to scan the given port range as quickly as possible.
-     Current math for max thread utilization is
-        if (count for cpu cores > 0)
-            -> utilize all the cpu cores i.e., threads = cpu core count x 4
-        else
-            -> 32 max threads count
-
-     Requires arguments:
-        * arguments -> pointer to the Scandetails data;
+     * @brief   Executes port range based scanning (implemented with
+     *          multithreading and other wrappers.
+     *
+     * @description     This function uses multithreading to utilize the CPU cores and
+     *                  threads for parallel scanning and pushing forward quick scan
+     *                  results in case of longer ranges.
+     *
+     * @param[void*] Scannerdetails
+     *
+     * @return  0 for sucessfull execution
+     *         -1 for error case
     */
 
     Scandetails* scan_data = (Scandetails*) arguments;
     pthread_mutex_init(&scan_data->counter_mutex, NULL);
 
-    // Starting the scan process
     printf ("[~] Scanning %s for the range %d to %d\n", scan_data->ip, scan_data->current_port, scan_data->last_port);
-    // - - - * - - -
+    
     // First doing the priority_ports
     memset(scanned_ports, 0, sizeof(scanned_ports));
     for (size_t i = 0; i < (sizeof(priority_ports) /  sizeof(priority_ports[0])); i++) {
@@ -112,63 +123,55 @@ int scan_port_range(void* arguments) {
         return 1;
     }
 
-    // Launching the worker thread and passing the runtime Scandetails pointer
     for (int i = 0; i < num_threads; i++)    pthread_create(&threads[i], NULL, worker_thread, scan_data);
-
-    // Waiting for all workers threads to get executed 
     for (int i = 0; i < num_threads; i++)    pthread_join(threads[i], NULL);
 
     free(threads);
     pthread_mutex_destroy(&scan_data->counter_mutex);
-    // - - - * - - -
 
     printf("[*] Scan completed\n");
     return 0;
 }
 
-void scanPorts(const char* ip, int port, unsigned char show_status) {
-    /*
-     This function connects to the given HOST IP ADDRESS via the given PORT.
-     Checks if the PORT can be connected, then gives out the result
-        * OPEN     - port is accessible
-        * CLOSED   - port is not accessible, we usually do not display closed ports as of
-                     intial codebase. But, this may be changed in later versions.
-        * FILTERED - port is either getting blocked (most probably via a firewall)
-     
-     Requires argument:
-      * ip -> string (const char*)
-      * port -> int (range should be 1 to 65535
-      * show_status -> int ; value should be either 0 false or 1 true.
-      
-      if show_status == SHOW, then we display all status regarding CLOSED or FILTERED.
-                           Useful in case of single port scan or hard scan
-      if show_status == HIDE, then we just display the OPEN status if available
-                            Useful for multiple ports, range scan.
+void scanPorts(const char* ip, int port, unsigned char show_status)
+{
+    /**
+    * @brief		Scans a specific network port on a target host to determine its availability.
+    *
+    * @description	This function attempts to establish a connection to a specified host
+    *				IP address through a designated port. It evaluates the connection response to
+    *				classify the port status into one of three categories:
+    *				- OPEN: The port is actively listening and accessible.
+    *				- CLOSED: The port is not accessible. These are typically hidden by default
+    *				  but may be displayed based on configuration.
+    *				- FILTERED: The port is unresponsive, indicating potential blocking by a firewall.
+    *
+    * @param[in]	ip			The target host IP address as a null-terminated string.
+    * @param[in]	port		The target port number to scan (valid range: 1 to 65535).
+    * @param[in]	show_status	Output verbosity flag. Set to 1 (DETAILS_SHOW) to log all statuses
+    *							(including CLOSED and FILTERED) for detailed or single-port scans.
+     *							Set to 0 (DETAILS_HIDE) to suppress non-open ports during large range scans.
     */
 
-    // Creating a socket connection config
     int socket_connection;
     struct sockaddr_in target;
     fd_set write_fdset, err_fdset;
     struct timeval tv;
 
     socket_connection = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_connection < 0) {
+    if (socket_connection < 0)
         return;
-    }
 
     // Setting sockets to NON-BLOCKING mode (helps to speed up shit)
     int flags = fcntl(socket_connection, F_GETFL, 0);
     fcntl(socket_connection, F_SETFL, flags | O_NONBLOCK);
 
-    // Assigning the given host address and port to the socket connection
     target.sin_family = AF_INET;
     target.sin_port = htons(port);
     target.sin_addr.s_addr = inet_addr(ip);
 
-    // Starting the connection
     int res = connect(socket_connection, (struct sockaddr*)&target, sizeof(target));
-
+    
     if (res == 0) {
         // Instant connection (rare in non-blocking unless localhost)
         printf("Port %d: OPEN\n", port);
@@ -185,7 +188,6 @@ void scanPorts(const char* ip, int port, unsigned char show_status) {
         tv.tv_sec = 1;    // 1-second timeout
         tv.tv_usec = 0;
 
-        // Monitor both writeability and error exceptions
         int select_res = select(socket_connection + 1, NULL, &write_fdset, NULL, &tv);
 
         if (select_res > 0) {
@@ -195,31 +197,26 @@ void scanPorts(const char* ip, int port, unsigned char show_status) {
                 getsockopt(socket_connection, SOL_SOCKET, SO_ERROR, &so_error, &len);
 
                 if (so_error == 0) {
-                    // If there is an immediate connection, we mark open
-
+                    // Immediate connection found
                     printf("Port %-5d: OPEN\n", port);
-                } else if (so_error == ECONNREFUSED) {
-                    // If hoost sends an RST packet (Port active but closed)
-
-                    if (show_status == 1)    printf("Port %-5d: CLOSED\n", port);
-                } else {
-                    // If the host or router returned an ICMP error/other failure 
-
-                    if (show_status == 1)    printf("Port %-5d: FILTERED\n", port);
+                }
+                else if (so_error == ECONNREFUSED) {
+                    if (show_status == 1)
+                        printf("Port %-5d: CLOSED\n", port);
+                }
+                else {
+                    if (show_status == 1)
+                        printf("Port %-5d: FILTERED\n", port);
                 }
             }
         } else if (select_res == 0) {
-            // If timeout reached with zero response (firewall silently dropped packet)
-
-            if (show_status == 1)    printf("Port %-5d: FILTERED\n", port);
+            if (show_status == 1)
+                printf("Port %-5d: FILTERED\n", port);
         } else {
-            // Select error occurred (either connection, or i suck at coding)
-
             printf("Port %-5d: ERROR\n", port);
         }
     } else {
-        // If we get immediate failure (i.e., Network Unreachable)
-        
+        // Immediate failure
         printf("Port %-5d: FILTERED or UNREACHABLE\n", port);
     }
 

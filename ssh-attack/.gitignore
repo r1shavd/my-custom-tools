@@ -1,0 +1,7 @@
+__pycache__/
+tests/
+*.pyc
+*.exe
+*.bin
+*.dll
+*.json

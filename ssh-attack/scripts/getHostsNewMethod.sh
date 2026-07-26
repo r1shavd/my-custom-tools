@@ -1,0 +1,1 @@
+for host in $( arp -a | awk '{ print $2 }' | sed 's/[)(]//g' ); do res=$( nmap -p 22,8022,2022 $host | grep -i "open" | awk '{ print $1 }' | sed 's/[/,tcp,udp]//g' ); if [[ -n $res ]]; then printf "$host,$res\n"; fi; done
